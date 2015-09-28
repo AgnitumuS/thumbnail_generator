@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MosaicControl>
+	<Control verbose="0" save_input="0" save_output="0"/>
+
+	<Output>
+<!-- 
+		<mosaic size="720,576" url="a0.ts" refresh="5" video_encoding="H264" video_bitrate="1300000" video_framerate="25" gop_size="75" x264_preset="faster" x264_threads="4" audio_encoding="AAC" audio_bitrate="128000,2,32000,AV_SAMPLE_FMT_S16" border="0" fill_colour="#108080" final_size="720,288" tiles_across="5" tiles_down="5"/>
+-->
+		<mosaic size="720,576" url="a0.ts" refresh="5" video_encoding="H264" video_bitrate="3000000" video_framerate="25" gop_size="75" x264_preset="faster" x264_threads="4" audio_encoding="AAC" audio_bitrate="128000,2,32000,AV_SAMPLE_FMT_S16" border="0" fill_colour="#108080" final_size="720,288" tiles_across="7" tiles_down="5"/>
+
+		<tile position="0,0,360,576"                         map="0"  audio="1" frames="A"/>
+		<tile position="360,0,360,576"                       map="0"  audio="1" frames="A"/>
+
+	</Output>
+
+	<Inputs>
+<!-- 
+		<stream name="MTV3.ts" url="/home/encoder/clearSerialNumber/a_mtv3.ts" fps="25.00"/> 
+-->
+		<stream name="MTV3.ts" url="/media/encoder/My Passport/Terminator.Genisys.2015.720p.BluRay.x264.YIFY.mp4" fps="25.00"/> 
+	</Inputs>
+
+</MosaicControl>
