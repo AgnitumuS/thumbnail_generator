@@ -29,6 +29,8 @@
  * @example demuxing_decoding.c
  */
 
+#include <stdio.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <signal.h>
 
@@ -204,8 +206,7 @@ typedef struct _OutputInfo {
     int audio_format;
     int need_audio;
 
-    int switch_timeout;
-    int switch_timeout_set;
+    int frames_count;
     int thumbnail_count;
 
     char *filename;
@@ -292,10 +293,7 @@ static const char *controlStrings[] = { "verbose", "save_input", "save_output", 
 #define NUMBER_OF_CONTROLS  (sizeof(controlStrings)/sizeof(char *))
 
 enum { MODE_THUMBNAIL };
-static const char *modeStrings[]    = { "thumbnail", NULL };
-#define NUMBER_OF_MODES     (sizeof(modeStrings)/sizeof(char *))
-
-static const char *mosaicsStrings[] = { "size", "url", "refresh", "video_bitrate", "video_framerate", "gop_size", "x264_preset", "audio_bitrate", "x264_threads", "border", "video_encoding", "audio_encoding", "fill_colour", "xxxx", "final_size", "tiles_across", "tiles_down", NULL };
+static const char *mosaicsStrings[] = { "size", "url", "frame_count", "video_bitrate", "video_framerate", "gop_size", "x264_preset", "audio_bitrate", "x264_threads", "border", "video_encoding", "audio_encoding", "fill_colour", "mode", "final_size", "tiles_across", "tiles_down", NULL };
 #define NUMBER_OF_MOSAICS   (sizeof(mosaicsStrings)/sizeof(char *))
 static const char *tileStrings[]    = { "position", "fixed", "map", "audio", "frames", "vu_meter", "index", "clock", "analog", "named", "popup", NULL };
 #define NUMBER_OF_TILES     (sizeof(tileStrings)/sizeof(char *))
@@ -434,11 +432,10 @@ static void print_element_names(xmlNode * a_node, char *xmlUrl, int level)
                 case LEVEL_OUTPUT:
                     if( !strcmp( (char *)cur_node->name, "mosaic")) {
                     xmlAttr *attr;
-                    char *vals[NUMBER_OF_MOSAICS] = { NULL, NULL, "30", NULL, NULL, NULL, NULL, NULL, "auto", "0", "H264", "AAC", "#" YCrCb_BLACK_S, "", NULL, "3", "3"};
+                    char *vals[NUMBER_OF_MOSAICS] = { NULL, NULL, "1", NULL, NULL, NULL, NULL, NULL, "auto", "0", "H264", "AAC", "#" YCrCb_BLACK_S, "A", NULL, "3", "3"};
                     int mask = 0;
 
                         // defaults
-                        vals[13] = (char *)modeStrings[0];
                         attr = cur_node->properties;
                         while( attr) {
                         xmlNode *values = attr->children;
@@ -470,10 +467,9 @@ static void print_element_names(xmlNode * a_node, char *xmlUrl, int level)
                             char codecFormat[64];
 
                                 outputSettings->filename               = strdup( vals[1]);
-                                outputSettings->switch_timeout         = atoi( vals[2]);
+                                outputSettings->frames_count           = atoi( vals[2]);    if( !outputSettings->frames_count) outputSettings->frames_count++;
                                 outputSettings->video_bitrate          = atoi( vals[3]);
                                 outputSettings->video_frame_rate       = atoi( vals[4]);
-                                //outputSettings->filename = strdup( "udp://224.170.0.3:1234?pkt_size=1316&buffer_size=1M");
                                 outputSettings->gop_size               = atoi( vals[5]);
                                 outputSettings->x264_preset            = strdup( vals[6]);
                                 if( sscanf( vals[7], "%d,%d,%d,%s", &outputSettings->audio_bit_rate, &outputSettings->audio_channels, &outputSettings->audio_sample_rate, &codecFormat[0])>=3) {
@@ -496,7 +492,19 @@ static void print_element_names(xmlNode * a_node, char *xmlUrl, int level)
                                     else {
                                         outputSettings->background      = strdup( vals[12]);
                                     }
-                                    outputSettings->mode                = localFindString( vals[13], modeStrings);
+                                    if( vals[13][0]=='A') {
+                                        outputSettings->mode = -1;
+                                    }
+                                    else if( vals[13][0]=='K') {
+                                        outputSettings->mode = -2;
+                                    }
+                                    else if( isdigit( vals[13][0])) {
+                                        outputSettings->mode = atoi( vals[13]);
+                                        if( !outputSettings->mode)
+                                            outputSettings->mode = 1;
+                                        else if( outputSettings->mode>50)
+                                            outputSettings->mode = 50;
+                                    }
                                     if( vals[14]) {
                                     int w, h;
 
@@ -512,7 +520,6 @@ static void print_element_names(xmlNode * a_node, char *xmlUrl, int level)
                                         outputSettings->final_width        = 0;
                                         outputSettings->final_height       = 0;
         				            }
-                                    outputSettings->switch_timeout_set = outputSettings->switch_timeout;
                                     if( outputSettings->audio_channels!=2 || localGetId( codecFormat, audioFormats)!=AV_SAMPLE_FMT_S16) {
                                         printf( "**** CAN ONLY HAVE S16 and 2 Channels\r\n");
                                         outputSettings->audio_channels = 2;
@@ -522,7 +529,7 @@ static void print_element_names(xmlNode * a_node, char *xmlUrl, int level)
                                     outputSettings->tiles_down = atoi( vals[16]);
                                     if( verbose) {
                                         printf( "%4d,%4d '%s' %5d %5d %2d %2d '%s' %5d %5d %s\n", outputSettings->screen_width, outputSettings->screen_height,
-                                            outputSettings->filename, outputSettings->switch_timeout, outputSettings->video_bitrate,
+                                            outputSettings->filename, outputSettings->frames_count, outputSettings->video_bitrate,
                                             outputSettings->video_frame_rate, outputSettings->gop_size, outputSettings->x264_preset,
                                             outputSettings->audio_bit_rate, outputSettings->audio_sample_rate, codecFormat);
                                     }
@@ -946,9 +953,12 @@ int sw = -1, sh = -1;
                 for(t=0; t<MAX_TILES_PER_INPUT; t++) {
                 Tiles *tile = outputSettings->tiles[outputSettings->thumbnail_count];
 		        static int frame_counter = 0;
+                int add;
 
-                  if( ++frame_counter==5) {  // frame->key_frame) {
-//                    if( frame->key_frame) {
+                    add  = (outputSettings->mode==-1);
+                    add |= (outputSettings->mode==-2 && frame->key_frame);
+                    add |= (outputSettings->mode>0 && ++frame_counter>=outputSettings->mode);
+                    if( add) {
                         frame_counter = 0;
                         if( inputSource->running) {
                             if( sw!=tile->w || sh!=tile->h) {
@@ -988,7 +998,7 @@ int sw = -1, sh = -1;
                             tile->updates_per_second++;
                             if( ++outputSettings->thumbnail_count==outputSettings->tiles_count) {
                                 outputSettings->thumbnail_count = 0;
-                                frame_ready = 1;
+                                frame_ready = outputSettings->frames_count;
                             }
                         }
                         else {
@@ -1559,7 +1569,6 @@ static void localCreateVideoFrame(AVFrame *pict, int frame_index,
     if (ret < 0)
         exit(1);
 
-
     if( outputSettings->background) {
         av_image_copy( pict->data, pict->linesize,
             (const uint8_t **)(outputSettings->background_frame->data), outputSettings->background_frame->linesize,
@@ -1880,12 +1889,6 @@ int tile_replace;
     while(!stop_all_tasks) {
     int timedOut = 0;
 
-        if (outputSettings->switch_timeout) {
-            if (!--outputSettings->switch_timeout) {
-                outputSettings->switch_timeout = outputSettings->switch_timeout_set;
-                timedOut = 1;
-            }
-        }
         if( timedOut) {
             pthread_mutex_lock( &outputSettings->buffer_mutex);
             pthread_mutex_unlock( &outputSettings->buffer_mutex);
@@ -1955,15 +1958,16 @@ xmlNode *root_element = NULL;
     Tiles st;
 
         outputSettings = outputMosaics[o];
-
         if( outputSettings->background) {
             outputSettings->background_frame = av_frame_alloc();
             if ( outputSettings->background_frame) {
             int ret = ff_load_image( outputSettings->background_frame->data, outputSettings->background_frame->linesize,
                             &outputSettings->background_frame->width, &outputSettings->background_frame->height,
                             &outputSettings->background_frame->format, outputSettings->background, NULL);
-                printf( "LoadImage %d %dx%d %d\r\n", ret, outputSettings->background_frame->width, outputSettings->background_frame->height,
-                    outputSettings->background_frame->format);
+                if( verbose) {
+                    printf( "LoadImage %d %dx%d %d\r\n", ret, outputSettings->background_frame->width, outputSettings->background_frame->height,
+                            outputSettings->background_frame->format);
+                }
             }
         }
 

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MosaicControl>
+	<Control verbose="0" save_input="0" save_output="0"/>
+
+	<Output>
+		<mosaic size="720,576" url="a0.ts" frame_count="1" video_encoding="H264" video_bitrate="3000000" video_framerate="25" gop_size="75" x264_preset="faster" x264_threads="4" audio_encoding="AAC" audio_bitrate="128000,2,32000,AV_SAMPLE_FMT_S16" border="0" fill_colour="#108080" final_size="720,288" tiles_across="7" tiles_down="5"/>
+
+		<tile position="0,0,720,288" map="0"/>
+		<tile position="0,288,360,288" map="1"/>
+		<tile position="360,288,360,288" map="2"/>
+	</Output>
+
+	<Inputs>
+		<stream name="MTV3.ts" url="/media/encoder/My Passport/Terminator.Genisys.2015.720p.BluRay.x264.YIFY.mp4" fps="25.00"/> 
+	</Inputs>
+
+</MosaicControl>
