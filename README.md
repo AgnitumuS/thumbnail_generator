@@ -8,9 +8,9 @@ The input configuration is an xml which allows you to either specify a generic r
 Options to be added 
 
 1. Which Frames to be added
-  1.1 Every Frame
-  1.2 Key Frames
-  1.3 Every X frame
+  1.1 Every Frame 					Added 29/10/2015
+  1.2 Key Frames 					Added 29/10/2015
+  1.3 Every X frame 				Added 29/10/2015
   1.4 Every X+Y frames
   1.5 Every X seconds
 
