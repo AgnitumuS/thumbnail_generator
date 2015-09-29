@@ -37,6 +37,8 @@
 #include <libavutil/imgutils.h>
 #include <libavutil/samplefmt.h>
 #include <libavutil/timestamp.h>
+//#include "libavfilter/lavfutils.h"
+int ff_load_image(uint8_t *data[4], int linesize[4], int *w, int *h, enum AVPixelFormat *pix_fmt, const char *filename, void *log_ctx);
 #include <libavformat/avformat.h>
 #include <libavformat/avio.h>
 #include <libswscale/swscale.h>
@@ -78,6 +80,12 @@
 #define IS_TILE_VIDEO(X)        ( 1)
 
 typedef int                     TILE_MAP; 
+
+enum {
+    VIDEO_INDEX,
+    AUDIO_INDEX,
+    MAX_INDEX
+};
 
 volatile int stop_all_tasks;
 
@@ -134,11 +142,6 @@ typedef struct _inputMosaic {
 
     AVFormatContext *fmt_ctx;
 
-    enum {
-        VIDEO_INDEX,
-        AUDIO_INDEX,
-        MAX_INDEX
-    };
     pthread_mutex_t list_mutex;
     videoFrames *packets_list[MAX_INDEX];
     double pts[ MAX_INDEX];
@@ -644,7 +647,7 @@ static void print_element_names(xmlNode * a_node, char *xmlUrl, int level)
                                 if( !strstr( inputs[ inputs_count]->src_filename, "fifo_size")) {
                                     stradd( inputs[ inputs_count]->src_filename, sep);
                                     stradd( inputs[ inputs_count]->src_filename, "fifo_size=50000");
-                                    sep = "&";
+//                                    sep = "&";
                                 }
 //                                sep = sep;
 //                                if( !strstr( inputs[ inputs_count]->src_filename, "buffer_size")) {
@@ -905,16 +908,9 @@ static void *inputThreadVideo( void *_whichSource)
 {
 GET_OUTPUT_SETTINGS;
 inputMosaic *inputSource = _whichSource;
-struct timeval start_time;
-int64_t start_usec;
 int skip = inputSource->skip_frames;
-int64_t NextPts, PrePts;
 int sw = -1, sh = -1;
 
-    NextPts = PrePts = 0;   // inputSource->video_dec_ctx->start_time;
-
-    gettimeofday(&start_time, NULL);
-    start_usec = TIMEOFDAY(start_time);
     while( FULL_TASK_RUN) {
     int cnt = localNumberOfPackets( inputSource, VIDEO_INDEX);
 
@@ -931,13 +927,11 @@ int sw = -1, sh = -1;
             videoFrames *here;
             AVFrame *frame;
             int t;
-            double pts;
 
                 pthread_mutex_lock( &inputSource->list_mutex);
                 here  = inputSource->packets_list[VIDEO_INDEX];
                 inputSource->packets_list[VIDEO_INDEX] = here->next;
                 frame = here->frame;
-                pts   = here->pts;
                 pthread_mutex_unlock( &inputSource->list_mutex);
 
                 if (frame->key_frame) {
@@ -968,9 +962,7 @@ int sw = -1, sh = -1;
                                 inputSource->scale_sws_ctx[t] = NULL;
                             }
                             if( !inputSource->scale_sws_ctx[t]) {
-                            int ret;
-
-                                if(1 || verbose) {
+                                if( verbose) {
                                     printf( "%d:%d '%s' needed scale from %dx%d to %dx%d, type %d\n", t, inputSource->tile_number[t], inputSource->name, 
                                         inputSource->video_dec_ctx->width, inputSource->video_dec_ctx->height, tile->w, tile->h, inputSource->video_dec_ctx->pix_fmt);
                                     fflush( stdout);
@@ -985,7 +977,6 @@ int sw = -1, sh = -1;
                                             "fmt:%s s:%dx%d -> fmt:%s s:%dx%d\n",
                                             av_get_pix_fmt_name(inputSource->video_dec_ctx->pix_fmt), inputSource->video_dec_ctx->width, inputSource->video_dec_ctx->height,
                                             av_get_pix_fmt_name(STREAM_PIX_FMT), tile->w, tile->h);
-                                    ret = AVERROR(EINVAL);
                                     goto end;
                                 }
                             }
@@ -1231,14 +1222,12 @@ static void *inputThread( void *_whichSource)
         /* open input file, and allocate format context */
         if (avformat_open_input(&inputSource->fmt_ctx, inputSource->src_filename, NULL, NULL) < 0) {
             fprintf(stderr, "%s:Could not open source file %s\n", inputSource->name, inputSource->src_filename);
-            ret = 1;
             goto end;
         }
 
         /* retrieve stream information */
         if (avformat_find_stream_info(inputSource->fmt_ctx, NULL) < 0) {
             fprintf(stderr, "Could not find stream information\n");
-            ret = 1;
             goto end;
         }
 
@@ -1780,8 +1769,6 @@ void *outputThread( void *_outputSettings)
     int have_video = 0;
     int encode_video = 0;
     AVDictionary *opt = NULL;
-    struct timeval start_time;
-    int64_t start_usec;
 
    /* allocate the output media context */
     avformat_alloc_output_context2(&outputSettings->oc, NULL, NULL, outputSettings->filename);
@@ -1827,8 +1814,6 @@ void *outputThread( void *_outputSettings)
         return NULL;
     }
 
-    gettimeofday(&start_time, NULL);        /* select the stream to encode */
-    start_usec = TIMEOFDAY(start_time);
     while (!stop_all_tasks && (encode_video)) {
         if( frame_ready) {
             encode_video = !write_video_frame(outputSettings->oc, &outputSettings->video_st);
@@ -1955,8 +1940,6 @@ xmlNode *root_element = NULL;
     xmlCleanupParser();
 
     for( o=0;o<outputMosaicsCnt; o++) {
-    Tiles st;
-
         outputSettings = outputMosaics[o];
         if( outputSettings->background) {
             outputSettings->background_frame = av_frame_alloc();
@@ -1999,7 +1982,6 @@ xmlNode *root_element = NULL;
             }
         }
 
-        st = *outputSettings->tiles[0];
         for( tile_replace=0; tile_replace<outputSettings->tiles_count; tile_replace++) {
         Tiles *thisOne = outputSettings->tiles[tile_replace];
 
@@ -2018,53 +2000,53 @@ xmlNode *root_element = NULL;
             printf( "Output thread could not be created\n");
             exit( -1);
         }
-    }
 
-    m = 0;
-    for( tile_replace=0; tile_replace<inputs_count; tile_replace++) {
-    int t;
+        m = 0;
+        for( tile_replace=0; tile_replace<inputs_count; tile_replace++) {
+        int t;
 
-        while( m<outputSettings->tiles_count && !IS_TILE_nF_FnC(outputSettings->tiles[m])) {
+            while( m<outputSettings->tiles_count && !IS_TILE_nF_FnC(outputSettings->tiles[m])) {
+                m++;
+            }
+            inputs[tile_replace]->skip = 0;
+            inputs[tile_replace]->tile_number[0] = m<outputSettings->tiles_count ? outputSettings->tile_map[m]+1:0;
+            for(t=1;t<MAX_TILES_PER_INPUT;t++) {
+                inputs[tile_replace]->tile_number[t] = 0;
+            }
             m++;
         }
-        inputs[tile_replace]->skip = 0;
-        inputs[tile_replace]->tile_number[0] = m<outputSettings->tiles_count ? outputSettings->tile_map[m]+1:0;
-        for(t=1;t<MAX_TILES_PER_INPUT;t++) {
-            inputs[tile_replace]->tile_number[t] = 0;
-        }
-        m++;
-    }
 
-    error = pthread_create( &threadMain, NULL, mainThread, (void *)outputSettings);
-    if (!error) {
-        pthread_join( threadMain, NULL);
-    }
-    else {
-        printf( "Main thread could not be created\n");
-        exit( -1);
-    }
-
-    if (outputSettings->background_frame)
-        av_freep(&outputSettings->background_frame->data[0]);
-    av_frame_free(&outputSettings->background_frame);
-
-    free( (void *)outputSettings->filename);
-    free( (void *)outputSettings->x264_preset);
-    free( (void *)outputSettings->x264_threads);
-    if( outputSettings->tiles) {
-        for( tile_replace=0; tile_replace<outputSettings->tiles_count; tile_replace++) {
-            free( outputSettings->tiles[ tile_replace]);
+        error = pthread_create( &threadMain, NULL, mainThread, (void *)outputSettings);
+        if (!error) {
+            pthread_join( threadMain, NULL);
         }
-        free( outputSettings->tiles);
-        free( outputSettings->tile_map);
-    }
-    if( inputs) {
-        for( tile_replace=0; tile_replace<inputs_count; tile_replace++) {
-            free( inputs[ tile_replace]->name);
-            free( inputs[ tile_replace]->src_filename);
-            free( inputs[ tile_replace]);
+        else {
+            printf( "Main thread could not be created\n");
+            exit( -1);
         }
-        free( inputs);
+
+        if (outputSettings->background_frame)
+            av_freep(&outputSettings->background_frame->data[0]);
+        av_frame_free(&outputSettings->background_frame);
+
+        free( (void *)outputSettings->filename);
+        free( (void *)outputSettings->x264_preset);
+        free( (void *)outputSettings->x264_threads);
+        if( outputSettings->tiles) {
+            for( tile_replace=0; tile_replace<outputSettings->tiles_count; tile_replace++) {
+                free( outputSettings->tiles[ tile_replace]);
+            }
+            free( outputSettings->tiles);
+            free( outputSettings->tile_map);
+        }
+        if( inputs) {
+            for( tile_replace=0; tile_replace<inputs_count; tile_replace++) {
+                free( inputs[ tile_replace]->name);
+                free( inputs[ tile_replace]->src_filename);
+                free( inputs[ tile_replace]);
+            }
+            free( inputs);
+        }
     }
 
     avformat_network_deinit();
