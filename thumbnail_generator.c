@@ -183,6 +183,7 @@ typedef struct _OutputInfo {
     OutputStream video_st;
     AVCodec *video_codec;
 
+    pthread_t threadMain;
     pthread_t outputThread;
     pthread_mutex_t tile_mutex;
 
@@ -249,20 +250,6 @@ enum {
 
 static int write_frame(AVFormatContext *fmt_ctx, const AVRational *time_base, AVStream *st, AVPacket *pkt);
 
-static void signal_handler( int no )
-{
-    stop_all_tasks = 1;
-}
-
-static void stradd( char *string, const char *addition)
-{
-    if( string) {
-        while( *string)
-            string++;
-        strcpy( string, addition);
-    }
-}
-
 typedef struct _codecList {
     const char *name;
     int id;
@@ -279,11 +266,11 @@ static codecList videoCodecs[] = {
 };
 
 static codecList audioCodecs[] = {
-    { "AAC",    CODEC_ID_AAC },
-    { "AC3",    CODEC_ID_AC3 },
-    { "MP2",    CODEC_ID_MP2 },
-    { "MP3",    CODEC_ID_MP3 },
-    { NULL,     CODEC_ID_AAC }
+    { "AAC",    AV_CODEC_ID_AAC },
+    { "AC3",    AV_CODEC_ID_AC3 },
+    { "MP2",    AV_CODEC_ID_MP2 },
+    { "MP3",    AV_CODEC_ID_MP3 },
+    { NULL,     AV_CODEC_ID_AAC }
 };
 
 static codecList audioFormats[] = {
@@ -302,6 +289,20 @@ static const char *tileStrings[]    = { "position", "fixed", "map", "audio", "fr
 #define NUMBER_OF_TILES     (sizeof(tileStrings)/sizeof(char *))
 static const char *streamStrings[]  = { "name", "url", "adult", "skip", "artist", "album", "year", "fps", NULL };
 #define NUMBER_OF_STREAMS   (sizeof(streamStrings)/sizeof(char *))
+
+static void signal_handler( int no )
+{
+    stop_all_tasks = 1;
+}
+
+static void stradd( char *string, const char *addition)
+{
+    if( string) {
+        while( *string)
+            string++;
+        strcpy( string, addition);
+    }
+}
 
 static int localGetId( const char *codec_name, codecList *whichList)
 {
@@ -549,6 +550,72 @@ static void print_element_names(xmlNode * a_node, char *xmlUrl, int level)
                             printf( "mosaic:%d '%s' '%s' '%s' '%s' '%s' '%s' '%s' '%s'\n", mask, vals[0], vals[1], vals[2], vals[3], vals[4], vals[5], vals[6], vals[7]);
                         }
                     }
+#if 0
+                    else if( !strcmp( (char *)cur_node->name, "stream")) {
+                    xmlAttr *attr;
+                    char *vals[NUMBER_OF_STREAMS] = { NULL, NULL, "0", "0", "", "", "", "25.00" };
+                    int mask = 0;
+
+                        attr = cur_node->properties;
+                        while( attr) {
+                        xmlNode *values = attr->children;
+                        int index = localFindString( (char *)attr->name, streamStrings);
+
+                            if( index>-1) {
+                                vals[index] = (char *)values->content;
+                                mask |= (1<<index);
+                            }
+                            else {
+                                printf( "stream->%s\n", attr->name);
+                            }
+                            attr = attr->next;
+                        }
+                        mask &= 1+2;
+                        if (mask==1+2) {
+                            outputSettings->inputs = realloc( outputSettings->inputs, sizeof( inputMosaic *)*(outputSettings->inputs_count+1));
+                            outputSettings->inputs[ outputSettings->inputs_count] = calloc( 1, sizeof( inputMosaic));
+                            outputSettings->inputs[ outputSettings->inputs_count]->name = strdup( vals[0]);
+                            outputSettings->inputs[ outputSettings->inputs_count]->src_filename = malloc( strlen( vals[1])+128);
+                            strcpy( outputSettings->inputs[ outputSettings->inputs_count]->src_filename, vals[1]);
+                            if( !memcmp( outputSettings->inputs[ outputSettings->inputs_count]->src_filename, "udp", 3)) {
+                            char *sep = "?";
+
+                                if( strchr( outputSettings->inputs[ outputSettings->inputs_count]->src_filename, '?'))
+                                    sep = "&";
+                                if( !strstr( outputSettings->inputs[ outputSettings->inputs_count]->src_filename, "reuse")) {
+                                    stradd( outputSettings->inputs[ outputSettings->inputs_count]->src_filename, sep);
+                                    stradd( outputSettings->inputs[ outputSettings->inputs_count]->src_filename, "reuse");
+                                    sep = "&";
+                                }
+                                if( !strstr( outputSettings->inputs[ outputSettings->inputs_count]->src_filename, "fifo_size")) {
+                                    stradd( outputSettings->inputs[ outputSettings->inputs_count]->src_filename, sep);
+                                    stradd( outputSettings->inputs[ outputSettings->inputs_count]->src_filename, "fifo_size=50000");
+//                                    sep = "&";
+                                }
+//                                sep = sep;
+//                                if( !strstr( outputSettings->inputs[ outputSettings->inputs_count]->src_filename, "buffer_size")) {
+//                                    stradd( outputSettings->inputs[ outputSettings->inputs_count]->src_filename, sep);
+//                                    stradd( outputSettings->inputs[ outputSettings->inputs_count]->src_filename, "buffer_size=1M");
+//                                    sep = "&";
+//                                }
+                            }
+                            outputSettings->inputs[ outputSettings->inputs_count]->adult        = atoi( vals[2]);
+                            outputSettings->inputs[ outputSettings->inputs_count]->skip_frames  = atoi( vals[3]);
+                            outputSettings->inputs[ outputSettings->inputs_count]->artist       = NULL;
+                            outputSettings->inputs[ outputSettings->inputs_count]->album        = NULL;
+                            outputSettings->inputs[ outputSettings->inputs_count]->year         = 2015;
+                            outputSettings->inputs[ outputSettings->inputs_count]->fps          = atof( vals[7]);
+                            if( verbose) {
+                                printf( "%d. '%s' '%s A:%d\n", outputSettings->inputs_count, outputSettings->inputs[ outputSettings->inputs_count]->name,
+                                    outputSettings->inputs[ outputSettings->inputs_count]->src_filename, outputSettings->inputs[ outputSettings->inputs_count]->adult);
+                            }
+                            outputSettings->inputs_count++;
+                        }
+                        else {
+                            printf( "stream:%d '%s' '%s' '%s'\n", mask, vals[0], vals[1], vals[2]);
+                        }
+                    }
+#endif
                     else if( !strcmp( (char *)cur_node->name, "tile")) {
                     xmlAttr *attr;
                     char *vals[NUMBER_OF_TILES] = { NULL, "0", NULL, "0", "K", "0", "0", "0", "0", NULL, NULL };
@@ -1262,7 +1329,6 @@ static void *inputThread( void *_whichSource)
 
         }
 
-
        /* When using the new API, you need to use the libavutil/frame.h API, while
          * the classic frame management is available in libavcodec */
         if ( 1) { // inputSource->frame) {
@@ -1295,7 +1361,7 @@ static void *inputThread( void *_whichSource)
             int x = 0;
 
                 inputSource->running = 1;
-                while (FULL_TASK_RUN && av_read_frame(inputSource->fmt_ctx, &inputSource->pkt) >= 0) {
+                while (FULL_TASK_RUN && (av_read_frame(inputSource->fmt_ctx, &inputSource->pkt) >= 0)) {
                 int cnt;
 
                     do {
@@ -1309,17 +1375,19 @@ static void *inputThread( void *_whichSource)
 #define PACKETS_LOW     (inputSource->video_dec_ctx->delay*2)
                     cnt = localNumberOfPackets( inputSource, VIDEO_INDEX);
                     if( cnt>PACKETS_HIGH) {
-//                        printf( "inputThread PAUSED\r\n");
+                        //printf( "inputThread PAUSED %d\r\n", cnt);
                         do {
-                            sleep(1);
+                            usleep(1000);
                             cnt = localNumberOfPackets( inputSource, VIDEO_INDEX);
                         } while( FULL_TASK_RUN && cnt>PACKETS_LOW);
-//                        printf( "inputThread RESTART\r\n");
+                        // printf( "inputThread RESTART %d\r\n, cnt");
                         if( x) {
                             if( !--x) {
                                 goto end;
                             }
                         }
+                    }
+                    else {
                     }
                 }
             }
@@ -1847,7 +1915,6 @@ void *mainThread( void *_outputMosaic)
 OutputInfo *outputSettings = _outputMosaic;
 int error;
 int t;
-int number_video_tiles;
 int tile_replace;
 
     for( tile_replace=0; tile_replace<inputs_count; tile_replace++) {
@@ -1862,13 +1929,6 @@ int tile_replace;
             thisOne->running = 0;
         }
         sleep(1);
-    }
-
-    number_video_tiles = 0;
-    for(t=0;t<outputSettings->tiles_count;t++) {
-        if( IS_TILE_VIDEO( outputSettings->tiles[t])) {
-            number_video_tiles++;
-        }
     }
 
     while(!stop_all_tasks) {
@@ -1898,8 +1958,6 @@ int tile_replace;
 
 int main( int argc, char **argv)
 {
-pthread_t threadMain;
-
 int ret = 0;
 int error;
 struct sigaction sa;
@@ -1941,6 +1999,7 @@ xmlNode *root_element = NULL;
 
     for( o=0;o<outputMosaicsCnt; o++) {
         outputSettings = outputMosaics[o];
+
         if( outputSettings->background) {
             outputSettings->background_frame = av_frame_alloc();
             if ( outputSettings->background_frame) {
@@ -1981,7 +2040,7 @@ xmlNode *root_element = NULL;
                 }
             }
         }
-
+        // Allocate space for the resized video frame
         for( tile_replace=0; tile_replace<outputSettings->tiles_count; tile_replace++) {
         Tiles *thisOne = outputSettings->tiles[tile_replace];
 
@@ -1998,7 +2057,6 @@ xmlNode *root_element = NULL;
         }
         else {
             printf( "Output thread could not be created\n");
-            exit( -1);
         }
 
         m = 0;
@@ -2015,15 +2073,16 @@ xmlNode *root_element = NULL;
             }
             m++;
         }
-
-        error = pthread_create( &threadMain, NULL, mainThread, (void *)outputSettings);
-        if (!error) {
-            pthread_join( threadMain, NULL);
-        }
-        else {
+        error = pthread_create( &outputSettings->threadMain, NULL, mainThread, (void *)outputSettings);
+        if (error) {
             printf( "Main thread could not be created\n");
-            exit( -1);
         }
+    }
+
+    for( o=0;o<outputMosaicsCnt; o++) {
+        outputSettings = outputMosaics[o];
+
+        pthread_join( outputSettings->threadMain, NULL);
 
         if (outputSettings->background_frame)
             av_freep(&outputSettings->background_frame->data[0]);

@@ -3,21 +3,22 @@
 	<Control verbose="0" save_input="0" save_output="0"/>
 
 	<Output>
+		<mosaic size="720,576" url="a0.ts" video_encoding="H264" video_bitrate="3000000" video_framerate="25" gop_size="75" x264_preset="faster" x264_threads="4" audio_encoding="AAC" audio_bitrate="128000,2,32000,AV_SAMPLE_FMT_S16" border="0" final_size="720,288" tiles_across="6" tiles_down="6" mode="A" frame_count="1" fill_colour="background4.jpg"/>
 <!-- 
-		<mosaic size="720,576" url="a0.ts" refresh="5" video_encoding="H264" video_bitrate="1300000" video_framerate="25" gop_size="75" x264_preset="faster" x264_threads="4" audio_encoding="AAC" audio_bitrate="128000,2,32000,AV_SAMPLE_FMT_S16" border="0" fill_colour="#108080" final_size="720,288" tiles_across="5" tiles_down="5"/>
+For the background use EITHER
+fill_colour="background4.jpg"
+fill_colour="#108080" 
+		<tile position="8,8,344,560" map="0"/>
+		<tile position="368,8,344,560" map="1"/>
 -->
-		<mosaic size="720,576" url="a0.ts" refresh="5" video_encoding="H264" video_bitrate="3000000" video_framerate="25" gop_size="75" x264_preset="faster" x264_threads="4" audio_encoding="AAC" audio_bitrate="128000,2,32000,AV_SAMPLE_FMT_S16" border="0" fill_colour="#108080" final_size="720,288" tiles_across="7" tiles_down="5"/>
-
-		<tile position="0,0,360,576"                         map="0"  audio="1" frames="A"/>
-		<tile position="360,0,360,576"                       map="0"  audio="1" frames="A"/>
-
 	</Output>
 
 	<Inputs>
+		<stream name="In transit" url="/home/encoder/dumps/Mexico_centerreplay.ts"/>
 <!-- 
-		<stream name="MTV3.ts" url="/home/encoder/clearSerialNumber/a_mtv3.ts" fps="25.00"/> 
+		<stream name="In transit" url="Covenant - Live in Concert - In Transit The Movie - Full Show.mp4"/>
+		<stream name="MTVMAX" url="/home/encoder/dumps/EXTRA1_031015_1500.ts"/>
 -->
-		<stream name="MTV3.ts" url="/media/encoder/My Passport/Terminator.Genisys.2015.720p.BluRay.x264.YIFY.mp4" fps="25.00"/> 
 	</Inputs>
 
 </MosaicControl>
